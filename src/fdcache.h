@@ -215,6 +215,7 @@ class FdManager
     FdEntity* ExistOpen(const char* path, int existfd = -1, bool ignore_existfd = false);
     void Rename(const std::string &from, const std::string &to);
     bool Close(FdEntity* ent);
+    bool CloseAndDeleteFile(FdEntity* ent);
     bool ChangeEntityToTempPath(FdEntity* ent, const char* path);
 };
 

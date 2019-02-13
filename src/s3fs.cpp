@@ -1986,9 +1986,14 @@ static int s3fs_truncate(const char* path, off_t size)
 
   // upload
   if(0 != (result = ent->Flush(true))){
-    S3FS_PRN_ERR("could not upload file(%s): result=%d", path, result);
-    FdManager::get()->Close(ent);
-    return result;
+    if (result != UPLOAD_END_CODE)
+    {
+      S3FS_PRN_ERR("could not upload file(%s): result=%d", path, result);
+      FdManager::get()->Close(ent);
+      return result;
+      } else {
+          result = 0;
+      }
   }
   FdManager::get()->Close(ent);
 
@@ -2147,8 +2152,16 @@ static int s3fs_flush(const char* path, struct fuse_file_info* fi)
   FdEntity* ent;
   if(NULL != (ent = FdManager::get()->ExistOpen(path, static_cast<int>(fi->fh)))){
     ent->UpdateMtime();
+    S3FS_PRN_CRIT("prepare upload [path=%s][fd=%llu]", ent->GetPath(), (unsigned long long)(fi->fh));
     result = ent->Flush(false);
-    FdManager::get()->Close(ent);
+    S3FS_PRN_CRIT("end upload [path=%s][fd=%llu][result=%d]", ent->GetPath(), (unsigned long long)(fi->fh), result);
+    if (result == UPLOAD_END_CODE)
+    {
+      FdManager::get()->CloseAndDeleteFile(ent);
+      result = 0;
+    } else {
+      FdManager::get()->Close(ent);
+    }
   }
   S3FS_MALLOCTRIM(0);
 

@@ -686,6 +686,31 @@ void FdEntity::Close(void)
   }
 }
 
+bool FdManager::CloseAndDeleteFile(FdEntity *ent){
+  // delete cache file is exists.
+  S3FS_PRN_CRIT("[ent->file=%s][ent->fd=%d]", ent ? ent->GetPath() : "", ent ? ent->GetFd() : -1);
+  if (ent)
+  {
+    DeleteCacheFile(ent->GetPath());
+  }
+  AutoLock auto_lock(&FdManager::fd_manager_lock);
+
+  for (fdent_map_t::iterator iter = fent.begin(); iter != fent.end(); ++iter)
+  {
+    if ((*iter).second == ent)
+    {
+      ent->Close();
+      if (!ent->IsOpen())
+      {
+        delete (*iter).second;
+        fent.erase(iter);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 int FdEntity::Dup(void)
 {
   S3FS_PRN_DBG("[path=%s][fd=%d][refcnt=%d]", path.c_str(), fd, (-1 != fd ? refcnt + 1 : refcnt));
@@ -879,7 +904,7 @@ bool FdEntity::GetStats(struct stat& st)
     return false;
   }
 
-  memset(&st, 0, sizeof(struct stat)); 
+  memset(&st, 0, sizeof(struct stat));
   if(-1 == fstat(fd, &st)){
     S3FS_PRN_ERR("fstat failed. errno(%d)", errno);
     return false;
@@ -1341,16 +1366,16 @@ int FdEntity::RowFlush(const char* tpath, bool force_sync)
 
     /*
      * Make decision to do multi upload (or not) based upon file size
-     * 
+     *
      * According to the OSS spec:
      *  - 1 to 10,000 parts are allowed
      *  - minimum size of parts is 5MB (expect for the last part)
-     * 
+     *
      * For our application, we will define minimum part size to be 10MB (10 * 2^20 Bytes)
-     * minimum file size will be 64 GB - 2 ** 36 
-     * 
+     * minimum file size will be 64 GB - 2 ** 36
+     *
      * Initially uploads will be done serially
-     * 
+     *
      * If file is > 20MB, then multipart will kick in
      */
     if(pagelist.Size() > static_cast<size_t>(MAX_MULTIPART_CNT * S3fsCurl::GetMultipartSize())){
@@ -1409,6 +1434,7 @@ int FdEntity::RowFlush(const char* tpath, bool force_sync)
 
   if(0 == result){
     is_modify = false;
+    return UPLOAD_END_CODE;
   }
   return result;
 }
@@ -1610,7 +1636,7 @@ bool FdManager::DeleteCacheDirectory(void)
 
 int FdManager::DeleteCacheFile(const char* path)
 {
-  S3FS_PRN_INFO3("[path=%s]", SAFESTRPTR(path));
+  S3FS_PRN_CRIT("[path=%s]", SAFESTRPTR(path));
 
   if(!path){
     return -EIO;
@@ -1623,6 +1649,7 @@ int FdManager::DeleteCacheFile(const char* path)
     return 0;
   }
   int result = 0;
+  S3FS_PRN_CRIT("[cache_path=%s]", SAFESTRPTR(cache_path.c_str()));
   if(0 != unlink(cache_path.c_str())){
     if(ENOENT == errno){
       S3FS_PRN_DBG("failed to delete file(%s): errno=%d", path, errno);
@@ -1910,6 +1937,7 @@ void FdManager::Rename(const std::string &from, const std::string &to)
 
 bool FdManager::Close(FdEntity* ent)
 {
+  // delete cache file is exists.
   S3FS_PRN_DBG("[ent->file=%s][ent->fd=%d]", ent ? ent->GetPath() : "", ent ? ent->GetFd() : -1);
 
   AutoLock auto_lock(&FdManager::fd_manager_lock);

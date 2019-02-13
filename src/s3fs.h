@@ -22,6 +22,7 @@
 
 #define FUSE_USE_VERSION      26
 #define FIVE_GB               5368709120LL
+#define UPLOAD_END_CODE       98765
 
 #include <fuse.h>
 
